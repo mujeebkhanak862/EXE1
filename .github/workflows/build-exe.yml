@@ -6,8 +6,7 @@ on:
   push:
     branches: [main, master]
     paths:
-      - "shared_app/**"
-      - "installers/windows/**"
+      - "UDA_exe_repo.zip"
       - ".github/workflows/build-exe.yml"
 
 permissions:
@@ -23,23 +22,50 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 45
 
-    env:
-      APP_VERSION: "0.1.0"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check project files
+      - name: Extract project ZIP
         shell: pwsh
         run: |
-          $files = @(
+          $archive = "$env:GITHUB_WORKSPACE\UDA_exe_repo.zip"
+
+          if (!(Test-Path $archive)) {
+            throw "UDA_exe_repo.zip not found!"
+          }
+
+          $extractDir = "$env:RUNNER_TEMP\uda_exe_source"
+
+          Expand-Archive -LiteralPath $archive `
+            -DestinationPath $extractDir -Force
+
+          foreach ($folder in @("shared_app", "installers")) {
+            $source = Join-Path $extractDir $folder
+            $destination = Join-Path $env:GITHUB_WORKSPACE $folder
+
+            if (!(Test-Path $source)) {
+              throw "Missing ZIP folder: $folder"
+            }
+
+            if (Test-Path $destination) {
+              Remove-Item $destination -Recurse -Force
+            }
+
+            Copy-Item $source $destination -Recurse -Force
+          }
+
+      - name: Verify project
+        shell: pwsh
+        run: |
+          $required = @(
             "shared_app/pubspec.yaml",
             "shared_app/windows/CMakeLists.txt",
+            "shared_app/windows/runner/CMakeLists.txt",
             "installers/windows/universal_device_agent.iss"
           )
 
-          foreach ($file in $files) {
+          foreach ($file in $required) {
             if (!(Test-Path $file)) {
               throw "Missing file: $file"
             }
@@ -55,63 +81,71 @@ jobs:
       - name: Flutter version
         run: flutter --version
 
-      - name: Generate Windows Flutter files
+      - name: Generate Windows managed files
         shell: pwsh
         run: |
-          $template = Join-Path $env:RUNNER_TEMP "uda_template"
+          $template = "$env:RUNNER_TEMP\uda_template"
 
-          flutter create --platforms=windows --project-name shared_app $template
+          flutter create --platforms=windows `
+            --org com.deviceagent `
+            --project-name shared_app $template
 
-          $src = Join-Path $template "windows/flutter"
-          $dst = "shared_app/windows/flutter"
+          $source = "$template\windows\flutter"
+          $destination = "shared_app\windows\flutter"
 
-          if (!(Test-Path "$src/CMakeLists.txt")) {
-            throw "Flutter Windows template generation failed."
+          if (!(Test-Path "$source\CMakeLists.txt")) {
+            throw "Flutter Windows template failed."
           }
 
-          if (Test-Path $dst) {
-            Remove-Item $dst -Recurse -Force
+          if (Test-Path $destination) {
+            Remove-Item $destination -Recurse -Force
           }
 
-          Copy-Item $src $dst -Recurse -Force
+          Copy-Item $source $destination -Recurse -Force
 
       - name: Get dependencies
         working-directory: shared_app
         run: flutter pub get
 
-      - name: Build Windows release
+      - name: Build Windows application
         working-directory: shared_app
+        run: flutter build windows --release
+
+      - name: Verify EXE
         shell: pwsh
         run: |
-          flutter build windows --release
+          $exe = "shared_app\build\windows\x64\runner\Release\device_agent.exe"
 
-          if (!(Test-Path "build/windows/x64/runner/Release/device_agent.exe")) {
-            throw "Windows EXE build failed."
+          if (!(Test-Path $exe)) {
+            throw "device_agent.exe was not generated!"
           }
 
       - name: Download Visual C++ Runtime
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path installers/windows | Out-Null
-
           Invoke-WebRequest `
             -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" `
-            -OutFile "installers/windows/vc_redist.x64.exe"
+            -OutFile "installers\windows\vc_redist.x64.exe"
 
       - name: Install Inno Setup
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
 
-      - name: Build EXE Installer
+      - name: Build installer
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 
-          & $iscc "/DAppVersion=$env:APP_VERSION" "installers\windows\universal_device_agent.iss"
+          if (!(Test-Path $iscc)) {
+            throw "Inno Setup not found!"
+          }
+
+          & $iscc "/DAppVersion=0.1.0" `
+            "installers\windows\universal_device_agent.iss"
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Installer compilation failed."
+            throw "Installer build failed!"
           }
 
       - name: Create Portable ZIP
@@ -126,10 +160,10 @@ jobs:
             -DestinationPath "out\UniversalDeviceAgent-Windows-Portable.zip"
 
           Copy-Item `
-            "installers\windows\Output\UniversalDeviceAgent-Setup-$env:APP_VERSION.exe" `
+            "installers\windows\Output\UniversalDeviceAgent-Setup-0.1.0.exe" `
             "out\"
 
-      - name: Upload EXE and ZIP
+      - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
           name: UniversalDeviceAgent-Windows
