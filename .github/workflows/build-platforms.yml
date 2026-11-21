@@ -98,7 +98,15 @@ jobs:
         working-directory: extracted/shared_app
         run: |
           flutter --version
+          flutter pub get
           flutter create --platforms=windows .
+          # The plugin uses wide-character paths; match the Win32 W APIs to std::wstring.
+          $plugin = "windows/flutter/ephemeral/.plugin_symlinks/flutter_secure_storage_windows/windows/flutter_secure_storage_windows_plugin.cpp"
+          if (Test-Path $plugin) {
+            $src = Get-Content $plugin -Raw
+            $src = $src.Replace("FindFirstFileA", "FindFirstFileW").Replace("FindNextFileA", "FindNextFileW").Replace("DeleteFileA", "DeleteFileW").Replace("GetFileAttributesA", "GetFileAttributesW")
+            Set-Content -Path $plugin -Value $src -NoNewline
+          }
           # Correct bundle destinations: the source defines BUILD_BUNDLE_DIR.
           (Get-Content windows/CMakeLists.txt -Raw).Replace('${INSTALL_BUNDLE_DIR}', '${BUILD_BUNDLE_DIR}') | Set-Content windows/CMakeLists.txt
 
@@ -147,6 +155,7 @@ jobs:
         working-directory: extracted/shared_app
         run: |
           flutter --version
+          flutter pub get
           flutter create --platforms=linux .
           # Ubuntu's libturbojpeg0-dev exports the libturbojpeg.pc module.
           sed -i 's/pkg_check_modules(TURBOJPEG REQUIRED IMPORTED_TARGET turbojpeg)/pkg_check_modules(TURBOJPEG REQUIRED IMPORTED_TARGET libturbojpeg)/' linux/CMakeLists.txt
