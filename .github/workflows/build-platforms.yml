@@ -1,0 +1,137 @@
+name: Build Universal Device Agent Platforms
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "Universal_Device_Agent_GitHub_Ready-1.zip"
+      - ".github/workflows/build-platforms.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uda-platform-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract app source
+        run: |
+          unzip -q Universal_Device_Agent_GitHub_Ready-1.zip -d extracted
+          test -f extracted/shared_app/pubspec.yaml
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build release APK
+        working-directory: extracted/shared_app
+        run: |
+          flutter pub get
+          flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-device-agent-android-apk
+          path: extracted/shared_app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+  windows-app:
+    name: Build Windows x64 app
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract app source
+        shell: pwsh
+        run: |
+          Expand-Archive -LiteralPath Universal_Device_Agent_GitHub_Ready-1.zip -DestinationPath extracted
+          if (!(Test-Path "extracted/shared_app/pubspec.yaml")) { throw "Flutter source not found at extracted/shared_app" }
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Build Windows release
+        working-directory: extracted/shared_app
+        run: |
+          flutter pub get
+          flutter build windows --release
+
+      - name: Package Windows app
+        shell: pwsh
+        run: Compress-Archive -Path extracted/shared_app/build/windows/x64/runner/Release/* -DestinationPath universal-device-agent-windows-x64.zip
+
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-device-agent-windows-x64
+          path: universal-device-agent-windows-x64.zip
+          if-no-files-found: error
+
+  linux-app:
+    name: Build Linux x64 app
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - name: Extract app source
+        run: |
+          unzip -q Universal_Device_Agent_GitHub_Ready-1.zip -d extracted
+          test -f extracted/shared_app/pubspec.yaml
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Build Linux release
+        working-directory: extracted/shared_app
+        run: |
+          flutter pub get
+          flutter build linux --release
+
+      - name: Package Linux app
+        run: |
+          cd extracted/shared_app/build/linux/x64/release
+          tar -czf "$GITHUB_WORKSPACE/universal-device-agent-linux-x64.tar.gz" bundle
+
+      - name: Upload Linux app
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-device-agent-linux-x64
+          path: universal-device-agent-linux-x64.tar.gz
+          if-no-files-found: error
