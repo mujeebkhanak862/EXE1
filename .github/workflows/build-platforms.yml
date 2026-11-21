@@ -283,3 +283,5 @@ jobs:
           name: universal-device-agent-linux-x64
           path: universal-device-agent-linux-x64.tar.gz
           if-no-files-found: error
+
+# Trigger a fresh validation run for the Linux plugin-linking fix.
