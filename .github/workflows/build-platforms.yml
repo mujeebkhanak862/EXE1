@@ -246,6 +246,31 @@ jobs:
           if ! grep -q '^#include <string>' linux/app_launcher_manager.cc; then
             sed -i '1i#include <string>' linux/app_launcher_manager.cc
           fi
+          # Keep CMake's install destinations inside the Flutter release bundle.
+          # The app's custom desktop/icon install rules use INSTALL_BUNDLE_DIR;
+          # without defining it, CMake tries to create absolute /data paths.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("linux/CMakeLists.txt")
+          lines = p.read_text().splitlines()
+          if not any(line.strip().startswith("set(INSTALL_BUNDLE_DIR ") for line in lines):
+              idx = next((i for i, line in enumerate(lines) if line.strip().startswith("project(")), None)
+              if idx is None:
+                  raise SystemExit("Could not locate project() in Linux CMakeLists")
+              bundle = [
+                  'set(BUILD_BUNDLE_DIR "${PROJECT_BINARY_DIR}/bundle")',
+                  'set(INSTALL_BUNDLE_DIR "${BUILD_BUNDLE_DIR}")',
+                  'set(INSTALL_BUNDLE_DATA_DIR "${BUILD_BUNDLE_DIR}/data")',
+                  'set(INSTALL_BUNDLE_LIB_DIR "${BUILD_BUNDLE_DIR}/lib")',
+                  'set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "Flutter bundle install prefix" FORCE)',
+              ]
+              lines[idx + 1:idx + 1] = bundle
+              p.write_text("\n".join(lines) + "\n")
+          print("===== Linux bundle install configuration =====")
+          for line in p.read_text().splitlines():
+              if "BUNDLE_DIR" in line or "CMAKE_INSTALL_PREFIX" in line:
+                  print(line)
+          PY
           # Flutter's generated Linux runner source is at linux/my_application.cc.
           test -f linux/flutter/generated_plugin_registrant.h
           grep -q 'fl_register_plugins' linux/flutter/generated_plugin_registrant.h
