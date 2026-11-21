@@ -223,18 +223,19 @@ jobs:
           # and links PLUGIN_BUNDLED_LIBRARIES into the application.
           python3 - <<'PY'
           from pathlib import Path
-          import re
           p = Path("linux/CMakeLists.txt")
           s = p.read_text()
-          if "include(flutter/generated_plugins.cmake)" not in s:
-              m = re.search(r'(?m)^add_subdirectory\\(["\\']?runner["\\']?\\)\\s*$', s)
-              if not m:
+          needle = "include(flutter/generated_plugins.cmake)"
+          if needle not in s:
+              lines = s.splitlines()
+              idx = next((i for i, line in enumerate(lines) if line.strip() in ('add_subdirectory("runner")', 'add_subdirectory(runner)')), None)
+              if idx is None:
                   raise SystemExit("Could not locate add_subdirectory(runner) in linux/CMakeLists.txt")
-              s = s[:m.end()] + "\\n\\ninclude(flutter/generated_plugins.cmake)\\n" + s[m.end():]
-              p.write_text(s)
+              lines.insert(idx + 1, needle)
+              p.write_text("\n".join(lines) + "\n")
           print("===== Linux top-level plugin CMake inclusion =====")
           for line in p.read_text().splitlines():
-              if "add_subdirectory" in line or "generated_plugins.cmake" in line:
+              if "add_subdirectory" in line or needle in line:
                   print(line)
           PY
           # Restore the secure-storage Linux public headers to the runner include path.
