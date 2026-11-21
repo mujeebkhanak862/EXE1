@@ -289,3 +289,5 @@ jobs:
 # Re-run platform validation after the Linux generated-plugin CMake fix.
 
 # Trigger a clean build after correcting Linux plugin generation order.
+
+# Re-run after placing generated plugin CMake after the Linux app target.
