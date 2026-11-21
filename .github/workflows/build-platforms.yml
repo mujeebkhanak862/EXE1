@@ -30,6 +30,9 @@ jobs:
         run: |
           unzip -q Universal_Device_Agent_GitHub_Ready-1.zip -d extracted
           test -f extracted/shared_app/pubspec.yaml
+          # RiskLevel is defined in api_key.dart for API keys; hide the
+          # separate manifest enum in this screen to avoid an ambiguous import.
+          sed -i "s|import '../protocol/capability_manifest.dart';|import '../protocol/capability_manifest.dart' hide RiskLevel;|" extracted/shared_app/lib/dashboard/key_manager_screen.dart
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -59,7 +62,7 @@ jobs:
 
   windows-app:
     name: Build Windows x64 app
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -69,6 +72,15 @@ jobs:
         run: |
           Expand-Archive -LiteralPath Universal_Device_Agent_GitHub_Ready-1.zip -DestinationPath extracted
           if (!(Test-Path "extracted/shared_app/pubspec.yaml")) { throw "Flutter source not found at extracted/shared_app" }
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Verify Visual Studio toolchain
+        shell: pwsh
+        run: |
+          where.exe msbuild
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
