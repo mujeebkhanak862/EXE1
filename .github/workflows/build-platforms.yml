@@ -125,15 +125,20 @@ jobs:
           Set-Content -Path $windowCpp -Value $window -NoNewline
           $windowHeader = "windows/runner/win32_window.h"
           $header = Get-Content $windowHeader -Raw
-          $header = $header.Replace("  friend class WindowClassRegistrar;`r`n`r`n", "")
-          $decl = "  static LRESULT CALLBACK WndProc(HWND const window, UINT const message,`r`n                                   WPARAM const wparam,`r`n                                   LPARAM const lparam) noexcept;`r`n"
-          $header = $header.Replace($decl, "")
-          $header = $header.Replace("  HWND GetHandle();`r`n", "  HWND GetHandle();`r`n`r`n" + $decl)
+          # The registrar lives in win32_window.cpp's anonymous namespace, so a
+          # global friend declaration creates a different, ambiguous class.
+          # Remove that friend and expose only the static window procedure.
+          $header = [regex]::Replace($header, '(?s)  friend class WindowClassRegistrar;\s*static LRESULT CALLBACK WndProc\((.*?)noexcept;', {
+            param($m)
+            "  public:`r`n  static LRESULT CALLBACK WndProc(" + $m.Groups[1].Value + "noexcept;`r`n`r`n private:"
+          })
+          if ($header -match 'friend class WindowClassRegistrar') { throw "Failed to remove conflicting WindowClassRegistrar friend declaration" }
+          if ($header -notmatch 'public:\s*static LRESULT CALLBACK WndProc') { throw "WndProc was not moved to public access" }
           Set-Content -Path $windowHeader -Value $header -NoNewline
           $screenCpp = "windows/runner/screen_capture_manager.cpp"
           $screen = Get-Content $screenCpp -Raw
           if ($screen -notmatch "windows.graphics.directx.direct3d11.interop.h") { $screen = $screen.Replace("#include <windows.graphics.capture.interop.h>", "#include <windows.graphics.capture.interop.h>`r`n#include <windows.graphics.directx.direct3d11.interop.h>`r`n#include <winrt/Windows.Graphics.DirectX.Direct3D11.h>") }
-          $screen = $screen.Replace("Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess", "ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess")
+          $screen = $screen.Replace("ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess", "::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess").Replace("Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess", "::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess").Replace("::::Windows::Graphics", "::Windows::Graphics")
           Set-Content -Path $screenCpp -Value $screen -NoNewline
           $filesCpp = "windows/runner/files_manager.cpp"
           $filesSrc = Get-Content $filesCpp -Raw
@@ -218,6 +223,12 @@ jobs:
           if [ -z "$plugin_include" ]; then echo "flutter_secure_storage_linux public headers not found"; exit 1; fi
           mkdir -p linux/flutter/flutter_secure_storage_linux
           cp -a "$plugin_include/." linux/flutter/flutter_secure_storage_linux/
+          # The generated registrant includes <flutter_secure_storage_linux/...>.
+          # Add linux/flutter as a public include root for the Flutter target.
+          if ! grep -q 'include_directories("${CMAKE_CURRENT_SOURCE_DIR}/flutter")' linux/CMakeLists.txt; then
+            sed -i '/^project(/a include_directories("${CMAKE_CURRENT_SOURCE_DIR}/flutter")' linux/CMakeLists.txt
+          fi
+          grep -q 'include_directories("${CMAKE_CURRENT_SOURCE_DIR}/flutter")' linux/CMakeLists.txt
           # The app launcher manager uses std::string in this translation unit.
           if ! grep -q '^#include <string>' linux/app_launcher_manager.cc; then
             sed -i '1i#include <string>' linux/app_launcher_manager.cc
