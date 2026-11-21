@@ -118,6 +118,27 @@ jobs:
         working-directory: extracted/shared_app
         run: |
           flutter pub get
+          # Repair the extracted custom Win32 runner with explicit wide APIs.
+          $windowCpp = "windows/runner/win32_window.cpp"
+          $window = Get-Content $windowCpp -Raw
+          $window = $window.Replace("WNDCLASS window_class{}", "WNDCLASSW window_class{}").Replace("RegisterClass(&window_class)", "RegisterClassW(&window_class)").Replace("UnregisterClass(kWindowClassName, nullptr)", "UnregisterClassW(kWindowClassName, nullptr)").Replace("CreateWindow(", "CreateWindowW(")
+          Set-Content -Path $windowCpp -Value $window -NoNewline
+          $windowHeader = "windows/runner/win32_window.h"
+          $header = Get-Content $windowHeader -Raw
+          $header = $header.Replace("  friend class WindowClassRegistrar;`r`n`r`n", "")
+          $decl = "  static LRESULT CALLBACK WndProc(HWND const window, UINT const message,`r`n                                   WPARAM const wparam,`r`n                                   LPARAM const lparam) noexcept;`r`n"
+          $header = $header.Replace($decl, "")
+          $header = $header.Replace("  HWND GetHandle();`r`n", "  HWND GetHandle();`r`n`r`n" + $decl)
+          Set-Content -Path $windowHeader -Value $header -NoNewline
+          $screenCpp = "windows/runner/screen_capture_manager.cpp"
+          $screen = Get-Content $screenCpp -Raw
+          if ($screen -notmatch "windows.graphics.directx.direct3d11.interop.h") { $screen = $screen.Replace("#include <windows.graphics.capture.interop.h>", "#include <windows.graphics.capture.interop.h>`r`n#include <windows.graphics.directx.direct3d11.interop.h>`r`n#include <winrt/Windows.Graphics.DirectX.Direct3D11.h>") }
+          $screen = $screen.Replace("Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess", "ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess")
+          Set-Content -Path $screenCpp -Value $screen -NoNewline
+          $filesCpp = "windows/runner/files_manager.cpp"
+          $filesSrc = Get-Content $filesCpp -Raw
+          if ($filesSrc -notmatch "#include <shlobj.h>") { $filesSrc = $filesSrc.Replace("#include <shobjidl.h>", "#include <shobjidl.h>`r`n#include <shlobj.h>`r`n#include <KnownFolders.h>`r`n#pragma comment(lib, `"shell32.lib`")") }
+          Set-Content -Path $filesCpp -Value $filesSrc -NoNewline
           # Apply compatibility changes after pub get recreates the plugin symlink.
           $plugin = "windows/flutter/ephemeral/.plugin_symlinks/flutter_secure_storage_windows/windows/flutter_secure_storage_windows_plugin.cpp"
           $pluginCmake = "windows/flutter/ephemeral/.plugin_symlinks/flutter_secure_storage_windows/windows/CMakeLists.txt"
@@ -192,6 +213,11 @@ jobs:
         working-directory: extracted/shared_app
         run: |
           flutter pub get
+          # Restore the secure-storage Linux public headers to the runner include path.
+          plugin_include="$(find "$HOME/.pub-cache/hosted/pub.dev" -type d -path '*/flutter_secure_storage_linux-*/linux/include/flutter_secure_storage_linux' | head -1)"
+          if [ -z "$plugin_include" ]; then echo "flutter_secure_storage_linux public headers not found"; exit 1; fi
+          mkdir -p linux/flutter/flutter_secure_storage_linux
+          cp -a "$plugin_include/." linux/flutter/flutter_secure_storage_linux/
           # The app launcher manager uses std::string in this translation unit.
           if ! grep -q '^#include <string>' linux/app_launcher_manager.cc; then
             sed -i '1i#include <string>' linux/app_launcher_manager.cc
