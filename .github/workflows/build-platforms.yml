@@ -258,6 +258,10 @@ jobs:
           flutter build linux --release --verbose 2>&1 | tee linux-build-verbose.log
           build_status=${PIPESTATUS[0]}
           echo "Flutter Linux build exit code: ${build_status}"
+          echo "===== Linux CMake install source rules ====="
+          grep -n -B4 -A8 -E 'INSTALL_BUNDLE|install\\(|DESTINATION|/data' linux/CMakeLists.txt || true
+          echo "===== generated install script lines 65-82 ====="
+          sed -n '65,82p' build/linux/x64/release/cmake_install.cmake 2>/dev/null || true
           echo "===== linker/compiler diagnostics ====="
           grep -Ein "undefined reference|cannot find|multiple definition|collect2|ld:|error:|fatal error|not found" linux-build-verbose.log | tail -n 160 || true
           if [ "${build_status}" -ne 0 ]; then
