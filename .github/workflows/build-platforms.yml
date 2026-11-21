@@ -79,6 +79,17 @@ jobs:
           $files = "extracted/shared_app/android/app/src/main/kotlin/com/deviceagent/app/FilesHandler.kt"
           (Get-Content $files -Raw).Replace("import android.os.Base64", "import android.util.Base64") | Set-Content $files
 
+      - name: Diagnose Windows native source
+        shell: pwsh
+        working-directory: extracted/shared_app
+        run: |
+          foreach ($file in @("windows/runner/win32_window.cpp","windows/runner/win32_window.h","windows/runner/screen_capture_manager.cpp","windows/runner/files_manager.cpp")) {
+            if (Test-Path $file) {
+              Write-Host "===== $file ====="
+              $n=0; Get-Content $file | ForEach-Object { $n++; if ($n -le 240) { "{0,4}: {1}" -f $n,$_ } }
+            }
+          }
+
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
 
@@ -149,6 +160,18 @@ jobs:
           unzip -q Universal_Device_Agent_GitHub_Ready-1.zip -d extracted
           test -f extracted/shared_app/pubspec.yaml
           sed -i "s|import '../protocol/capability_manifest.dart';|import '../protocol/capability_manifest.dart' hide RiskLevel;|" extracted/shared_app/lib/dashboard/key_manager_screen.dart
+
+      - name: Diagnose Linux plugin headers
+        working-directory: extracted/shared_app
+        run: |
+          echo "===== pubspec dependencies ====="
+          grep -n -A4 -B2 "flutter_secure_storage" pubspec.yaml || true
+          echo "===== plugin symlinks ====="
+          ls -la linux/flutter/ephemeral/.plugin_symlinks || true
+          echo "===== secure storage plugin files ====="
+          find .dart_tool ~/.pub-cache -path '*flutter_secure_storage_linux*' -type f 2>/dev/null | head -100 || true
+          echo "===== generated registrant ====="
+          sed -n '1,100p' linux/flutter/generated_plugin_registrant.cc 2>/dev/null || true
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
