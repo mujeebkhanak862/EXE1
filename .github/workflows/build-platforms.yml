@@ -296,3 +296,5 @@ jobs:
 # Trigger a fresh validation run for the Linux plugin-linking fix.
 
 # Re-run platform validation after the Linux generated-plugin CMake fix.
+
+# Trigger a clean build after correcting Linux plugin generation order.
