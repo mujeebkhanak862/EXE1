@@ -218,25 +218,25 @@ jobs:
         working-directory: extracted/shared_app
         run: |
           flutter pub get
-          # Ensure the federated Linux plugin shared libraries are linked into the app.
-          # The generated registrant calls the plugin's exported registration symbol;
-          # compiling the registrant alone is insufficient without this link step.
-          # Flutter's generated plugin CMake must be included by the top-level
-          # Linux project BEFORE the runner target is configured. Otherwise
-          # PLUGIN_BUNDLED_LIBRARIES stays empty and the registrant symbol is unresolved.
-          test -f linux/flutter/generated_plugins.cmake
-          if ! grep -Fq 'include(flutter/generated_plugins.cmake)' linux/CMakeLists.txt; then
-            sed -i '/^add_subdirectory("runner")/i include(flutter/generated_plugins.cmake)' linux/CMakeLists.txt
-          fi
-          grep -F 'include(flutter/generated_plugins.cmake)' linux/CMakeLists.txt
-          runner_cmake="linux/runner/CMakeLists.txt"
-          test -f "$runner_cmake"
-          if ! grep -Fq 'target_link_libraries(${BINARY_NAME} PRIVATE ${PLUGIN_BUNDLED_LIBRARIES})' "$runner_cmake"; then
-            printf '\n# Link all Flutter Linux plugin libraries, including secure storage.\ntarget_link_libraries(${BINARY_NAME} PRIVATE ${PLUGIN_BUNDLED_LIBRARIES})\n' >> "$runner_cmake"
-          fi
-          grep -F 'target_link_libraries(${BINARY_NAME} PRIVATE ${PLUGIN_BUNDLED_LIBRARIES})' "$runner_cmake"
-          # Verify Flutter generated the secure-storage plugin target before compiling.
-          grep -q 'flutter_secure_storage_linux' linux/flutter/generated_plugins.cmake
+          # Flutter generates generated_plugins.cmake during the build preparation.
+          # Include it AFTER the runner target exists; this file adds plugin targets
+          # and links PLUGIN_BUNDLED_LIBRARIES into the application.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("linux/CMakeLists.txt")
+          s = p.read_text()
+          if "include(flutter/generated_plugins.cmake)" not in s:
+              m = re.search(r'(?m)^add_subdirectory\\(["\\']?runner["\\']?\\)\\s*$', s)
+              if not m:
+                  raise SystemExit("Could not locate add_subdirectory(runner) in linux/CMakeLists.txt")
+              s = s[:m.end()] + "\\n\\ninclude(flutter/generated_plugins.cmake)\\n" + s[m.end():]
+              p.write_text(s)
+          print("===== Linux top-level plugin CMake inclusion =====")
+          for line in p.read_text().splitlines():
+              if "add_subdirectory" in line or "generated_plugins.cmake" in line:
+                  print(line)
+          PY
           # Restore the secure-storage Linux public headers to the runner include path.
           plugin_include="$(find "$HOME/.pub-cache/hosted/pub.dev" -type d -path '*/flutter_secure_storage_linux-*/linux/include/flutter_secure_storage_linux' | head -1)"
           if [ -z "$plugin_include" ]; then echo "flutter_secure_storage_linux public headers not found"; exit 1; fi
