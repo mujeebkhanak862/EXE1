@@ -72,6 +72,8 @@ jobs:
         run: |
           Expand-Archive -LiteralPath Universal_Device_Agent_GitHub_Ready-1.zip -DestinationPath extracted
           if (!(Test-Path "extracted/shared_app/pubspec.yaml")) { throw "Flutter source not found at extracted/shared_app" }
+          $screen = "extracted/shared_app/lib/dashboard/key_manager_screen.dart"
+          (Get-Content $screen -Raw).Replace("import '../protocol/capability_manifest.dart';", "import '../protocol/capability_manifest.dart' hide RiskLevel;") | Set-Content $screen
 
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -127,6 +129,7 @@ jobs:
         run: |
           unzip -q Universal_Device_Agent_GitHub_Ready-1.zip -d extracted
           test -f extracted/shared_app/pubspec.yaml
+          sed -i "s|import '../protocol/capability_manifest.dart';|import '../protocol/capability_manifest.dart' hide RiskLevel;|" extracted/shared_app/lib/dashboard/key_manager_screen.dart
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
