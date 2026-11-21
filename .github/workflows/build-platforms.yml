@@ -169,6 +169,10 @@ jobs:
         working-directory: extracted/shared_app
         run: |
           flutter pub get
+          # The app launcher manager uses std::string in this translation unit.
+          if ! grep -q '^#include <string>' linux/app_launcher_manager.cc; then
+            sed -i '1i#include <string>' linux/app_launcher_manager.cc
+          fi
           # Flutter's generated Linux runner source is at linux/my_application.cc.
           test -f linux/flutter/generated_plugin_registrant.h
           grep -q 'fl_register_plugins' linux/flutter/generated_plugin_registrant.h
