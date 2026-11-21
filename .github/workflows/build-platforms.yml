@@ -293,3 +293,5 @@ jobs:
           if-no-files-found: error
 
 # Trigger a fresh validation run for the Linux plugin-linking fix.
+
+# Re-run platform validation after the Linux generated-plugin CMake fix.
