@@ -164,12 +164,12 @@ jobs:
         working-directory: extracted/shared_app
         run: |
           flutter pub get
-          # Flutter generates this header during pub get; include it using the
-          # standard Linux runner path so fl_register_plugins is declared.
+          # Keep the runner declaration in sync with Flutter's generated Linux
+          # registrar. This avoids relying on a generated include search path.
           test -f linux/flutter/generated_plugin_registrant.h
-          grep -q 'fl_register_plugins' linux/flutter/generated_plugin_registrant.h
-          if ! grep -q 'flutter/generated_plugin_registrant.h' linux/runner/my_application.cc; then
-            sed -i '/#include "my_application.h"/a #include "flutter/generated_plugin_registrant.h"' linux/runner/my_application.cc
+          grep -q 'void fl_register_plugins(FlPluginRegistry\* registry);' linux/flutter/generated_plugin_registrant.h
+          if ! grep -q 'void fl_register_plugins(FlPluginRegistry\* registry);' linux/runner/my_application.cc; then
+            sed -i '/#include <flutter_linux\/flutter_linux.h>/a void fl_register_plugins(FlPluginRegistry* registry);' linux/runner/my_application.cc
           fi
           flutter build linux --release
 
