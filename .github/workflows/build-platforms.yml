@@ -239,7 +239,27 @@ jobs:
           if ! grep -q 'generated_plugin_registrant.h' linux/my_application.cc; then
             sed -i '/#include "my_application.h"/a #include "flutter/generated_plugin_registrant.h"' linux/my_application.cc
           fi
-          flutter build linux --release
+          # Capture Flutter, CMake, Ninja, and linker diagnostics. The previous
+          # run stopped at clang++'s generic linker error without showing symbols.
+          set +e
+          flutter build linux --release --verbose 2>&1 | tee linux-build-verbose.log
+          build_status=${PIPESTATUS[0]}
+          echo "Flutter Linux build exit code: ${build_status}"
+          echo "===== linker/compiler diagnostics ====="
+          grep -Ein "undefined reference|cannot find|multiple definition|collect2|ld:|error:|fatal error|not found" linux-build-verbose.log | tail -n 160 || true
+          if [ "${build_status}" -ne 0 ]; then
+            echo "===== final 250 log lines ====="
+            tail -n 250 linux-build-verbose.log
+            exit "${build_status}"
+          fi
+
+      - name: Upload Linux build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-device-agent-linux-build-diagnostics
+          path: extracted/shared_app/linux-build-verbose.log
+          if-no-files-found: ignore
 
       - name: Package Linux app
         run: |
