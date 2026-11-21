@@ -225,7 +225,9 @@ jobs:
           # CMakeLists.txt (not linux/runner). Append the generated plugin rules
           # after the executable target so Flutter can attach plugin libraries.
           if ! grep -Fq 'include(flutter/generated_plugins.cmake)' linux/CMakeLists.txt; then
-            printf '\\ninclude(flutter/generated_plugins.cmake)\\n' >> linux/CMakeLists.txt
+            cat >> linux/CMakeLists.txt <<'CMAKE'
+          include(flutter/generated_plugins.cmake)
+          CMAKE
           fi
           tail -n 20 linux/CMakeLists.txt
 
