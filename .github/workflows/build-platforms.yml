@@ -104,7 +104,7 @@ jobs:
           $plugin = "windows/flutter/ephemeral/.plugin_symlinks/flutter_secure_storage_windows/windows/flutter_secure_storage_windows_plugin.cpp"
           if (Test-Path $plugin) {
             $src = Get-Content $plugin -Raw
-            $src = $src.Replace("FindFirstFileA", "FindFirstFileW").Replace("FindNextFileA", "FindNextFileW").Replace("DeleteFileA", "DeleteFileW").Replace("GetFileAttributesA", "GetFileAttributesW")
+            $src = $src.Replace("WIN32_FIND_DATAA", "WIN32_FIND_DATAW").Replace("FindFirstFileA", "FindFirstFileW").Replace("FindNextFileA", "FindNextFileW").Replace("DeleteFileA", "DeleteFileW").Replace("GetFileAttributesA", "GetFileAttributesW")
             Set-Content -Path $plugin -Value $src -NoNewline
           }
           # Correct bundle destinations: the source defines BUILD_BUNDLE_DIR.
@@ -159,6 +159,10 @@ jobs:
           flutter create --platforms=linux .
           # Ubuntu's libturbojpeg0-dev exports the libturbojpeg.pc module.
           sed -i 's/pkg_check_modules(TURBOJPEG REQUIRED IMPORTED_TARGET turbojpeg)/pkg_check_modules(TURBOJPEG REQUIRED IMPORTED_TARGET libturbojpeg)/' linux/CMakeLists.txt
+          # Ensure the Linux runner includes Flutter's generated plugin registrar declaration.
+          if ! grep -q 'generated_plugin_registrant.h' linux/runner/my_application.cc; then
+            sed -i '/#include "my_application.h"/a #include "generated_plugin_registrant.h"' linux/runner/my_application.cc
+          fi
 
       - name: Build Linux release
         working-directory: extracted/shared_app
