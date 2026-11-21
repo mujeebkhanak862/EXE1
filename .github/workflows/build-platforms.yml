@@ -179,7 +179,7 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libpipewire-0.3-dev libx11-dev libxtst-dev libturbojpeg0-dev libebook1.2-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libpipewire-0.3-dev libx11-dev libxtst-dev libturbojpeg0-dev libebook1.2-dev libsecret-1-dev libjsoncpp-dev
 
       - name: Extract app source
         run: |
@@ -221,6 +221,14 @@ jobs:
           # Ensure the federated Linux plugin shared libraries are linked into the app.
           # The generated registrant calls the plugin's exported registration symbol;
           # compiling the registrant alone is insufficient without this link step.
+          # Flutter's generated plugin CMake must be included by the top-level
+          # Linux project BEFORE the runner target is configured. Otherwise
+          # PLUGIN_BUNDLED_LIBRARIES stays empty and the registrant symbol is unresolved.
+          test -f linux/flutter/generated_plugins.cmake
+          if ! grep -Fq 'include(flutter/generated_plugins.cmake)' linux/CMakeLists.txt; then
+            sed -i '/^add_subdirectory("runner")/i include(flutter/generated_plugins.cmake)' linux/CMakeLists.txt
+          fi
+          grep -F 'include(flutter/generated_plugins.cmake)' linux/CMakeLists.txt
           runner_cmake="linux/runner/CMakeLists.txt"
           test -f "$runner_cmake"
           if ! grep -Fq 'target_link_libraries(${BINARY_NAME} PRIVATE ${PLUGIN_BUNDLED_LIBRARIES})' "$runner_cmake"; then
