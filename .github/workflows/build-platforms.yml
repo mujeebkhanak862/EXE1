@@ -159,15 +159,18 @@ jobs:
           flutter create --platforms=linux .
           # Ubuntu's libturbojpeg0-dev exports the libturbojpeg.pc module.
           sed -i 's/pkg_check_modules(TURBOJPEG REQUIRED IMPORTED_TARGET turbojpeg)/pkg_check_modules(TURBOJPEG REQUIRED IMPORTED_TARGET libturbojpeg)/' linux/CMakeLists.txt
-          # Ensure the Linux runner includes Flutter's generated plugin registrar declaration.
-          if ! grep -q 'generated_plugin_registrant.h' linux/runner/my_application.cc; then
-            sed -i '/#include "my_application.h"/a #include "generated_plugin_registrant.h"' linux/runner/my_application.cc
-          fi
 
       - name: Build Linux release
         working-directory: extracted/shared_app
         run: |
           flutter pub get
+          # Flutter generates this header during pub get; include it using the
+          # standard Linux runner path so fl_register_plugins is declared.
+          test -f linux/flutter/generated_plugin_registrant.h
+          grep -q 'fl_register_plugins' linux/flutter/generated_plugin_registrant.h
+          if ! grep -q 'flutter/generated_plugin_registrant.h' linux/runner/my_application.cc; then
+            sed -i '/#include "my_application.h"/a #include "flutter/generated_plugin_registrant.h"' linux/runner/my_application.cc
+          fi
           flutter build linux --release
 
       - name: Package Linux app
