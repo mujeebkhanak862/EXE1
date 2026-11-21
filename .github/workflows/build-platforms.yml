@@ -100,13 +100,6 @@ jobs:
           flutter --version
           flutter pub get
           flutter create --platforms=windows .
-          # The plugin uses wide-character paths; match the Win32 W APIs to std::wstring.
-          $plugin = "windows/flutter/ephemeral/.plugin_symlinks/flutter_secure_storage_windows/windows/flutter_secure_storage_windows_plugin.cpp"
-          if (Test-Path $plugin) {
-            $src = Get-Content $plugin -Raw
-            $src = $src.Replace("WIN32_FIND_DATAA", "WIN32_FIND_DATAW").Replace("FindFirstFileA", "FindFirstFileW").Replace("FindNextFileA", "FindNextFileW").Replace("DeleteFileA", "DeleteFileW").Replace("GetFileAttributesA", "GetFileAttributesW")
-            Set-Content -Path $plugin -Value $src -NoNewline
-          }
           # Correct bundle destinations: the source defines BUILD_BUNDLE_DIR.
           (Get-Content windows/CMakeLists.txt -Raw).Replace('${INSTALL_BUNDLE_DIR}', '${BUILD_BUNDLE_DIR}') | Set-Content windows/CMakeLists.txt
 
@@ -114,6 +107,18 @@ jobs:
         working-directory: extracted/shared_app
         run: |
           flutter pub get
+          # Apply compatibility changes after pub get recreates the plugin symlink.
+          $plugin = "windows/flutter/ephemeral/.plugin_symlinks/flutter_secure_storage_windows/windows/flutter_secure_storage_windows_plugin.cpp"
+          $pluginCmake = "windows/flutter/ephemeral/.plugin_symlinks/flutter_secure_storage_windows/windows/CMakeLists.txt"
+          if (!(Test-Path $plugin)) { throw "flutter_secure_storage_windows C++ source not found" }
+          $src = Get-Content $plugin -Raw
+          $src = $src.Replace("WIN32_FIND_DATAA", "WIN32_FIND_DATAW").Replace("FindFirstFileA", "FindFirstFileW").Replace("FindNextFileA", "FindNextFileW").Replace("DeleteFileA", "DeleteFileW").Replace("GetFileAttributesA", "GetFileAttributesW")
+          Set-Content -Path $plugin -Value $src -NoNewline
+          if (!(Test-Path $pluginCmake)) { throw "flutter_secure_storage_windows CMakeLists.txt not found" }
+          $cmake = Get-Content $pluginCmake -Raw
+          if ($cmake -notmatch "add_compile_definitions\\(UNICODE _UNICODE\\)") {
+            Add-Content -Path $pluginCmake -Value "`nadd_compile_definitions(UNICODE _UNICODE)`n"
+          }
           flutter build windows --release
 
       - name: Package Windows app
@@ -164,12 +169,11 @@ jobs:
         working-directory: extracted/shared_app
         run: |
           flutter pub get
-          # Keep the runner declaration in sync with Flutter's generated Linux
-          # registrar. This avoids relying on a generated include search path.
+          # Flutter's generated Linux runner source is at linux/my_application.cc.
           test -f linux/flutter/generated_plugin_registrant.h
-          grep -q 'void fl_register_plugins(FlPluginRegistry\* registry);' linux/flutter/generated_plugin_registrant.h
-          if ! grep -q 'void fl_register_plugins(FlPluginRegistry\* registry);' linux/runner/my_application.cc; then
-            sed -i '/#include <flutter_linux\/flutter_linux.h>/a void fl_register_plugins(FlPluginRegistry* registry);' linux/runner/my_application.cc
+          grep -q 'fl_register_plugins' linux/flutter/generated_plugin_registrant.h
+          if ! grep -q 'generated_plugin_registrant.h' linux/my_application.cc; then
+            sed -i '/#include "my_application.h"/a #include "flutter/generated_plugin_registrant.h"' linux/my_application.cc
           fi
           flutter build linux --release
 
