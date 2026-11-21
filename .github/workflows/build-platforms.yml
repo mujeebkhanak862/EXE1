@@ -218,6 +218,17 @@ jobs:
         working-directory: extracted/shared_app
         run: |
           flutter pub get
+          # Ensure the federated Linux plugin shared libraries are linked into the app.
+          # The generated registrant calls the plugin's exported registration symbol;
+          # compiling the registrant alone is insufficient without this link step.
+          runner_cmake="linux/runner/CMakeLists.txt"
+          test -f "$runner_cmake"
+          if ! grep -Fq 'target_link_libraries(${BINARY_NAME} PRIVATE ${PLUGIN_BUNDLED_LIBRARIES})' "$runner_cmake"; then
+            printf '\n# Link all Flutter Linux plugin libraries, including secure storage.\ntarget_link_libraries(${BINARY_NAME} PRIVATE ${PLUGIN_BUNDLED_LIBRARIES})\n' >> "$runner_cmake"
+          fi
+          grep -F 'target_link_libraries(${BINARY_NAME} PRIVATE ${PLUGIN_BUNDLED_LIBRARIES})' "$runner_cmake"
+          # Verify Flutter generated the secure-storage plugin target before compiling.
+          grep -q 'flutter_secure_storage_linux' linux/flutter/generated_plugins.cmake
           # Restore the secure-storage Linux public headers to the runner include path.
           plugin_include="$(find "$HOME/.pub-cache/hosted/pub.dev" -type d -path '*/flutter_secure_storage_linux-*/linux/include/flutter_secure_storage_linux' | head -1)"
           if [ -z "$plugin_include" ]; then echo "flutter_secure_storage_linux public headers not found"; exit 1; fi
